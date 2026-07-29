@@ -1,0 +1,4 @@
+*.onnx binary
+*.wasm binary
+*.jpg binary
+*.png binary

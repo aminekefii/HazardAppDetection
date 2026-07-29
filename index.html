@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Hazard Detector</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="stage">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="overlay"></canvas>
+
+    <div id="topbar">
+      <span id="status">loading model…</span>
+      <span id="right">
+        <span id="fps"></span>
+        <button id="muteBtn" title="Mute spoken warnings">🔊</button>
+        <button id="gearBtn" title="Settings">⚙</button>
+      </span>
+    </div>
+
+    <div id="chip" class="hidden"></div>
+
+    <div id="banner" class="hidden">
+      <div id="banner-head"></div>
+      <div id="banner-warn"></div>
+    </div>
+
+    <button id="startBtn">Start camera</button>
+
+    <div id="sheet" class="hidden">
+      <h2>Gemini API key</h2>
+      <p>Stored only on this device. Never uploaded, never in the app's source.</p>
+      <input id="keyInput" type="password" placeholder="paste your key" autocomplete="off" />
+      <div class="row">
+        <button id="saveKey">Save</button>
+        <button id="clearKey" class="ghost">Remove</button>
+        <button id="closeSheet" class="ghost">Close</button>
+      </div>
+      <p id="sheetMsg"></p>
+    </div>
+  </div>
+
+  <script src="vendor/ort.min.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
