@@ -213,13 +213,18 @@ cd /c/Users/amine/AppData/Local/Temp/claude
 mkdir -p ortpull && cd ortpull
 npm install onnxruntime-web@1.20.1 --no-save --silent
 cd /c/Users/amine/Desktop/Model-Prog/HazardApp-iphone
-cp /c/Users/amine/AppData/Local/Temp/claude/ortpull/node_modules/onnxruntime-web/dist/ort.min.js vendor/
-cp /c/Users/amine/AppData/Local/Temp/claude/ortpull/node_modules/onnxruntime-web/dist/*.wasm vendor/
-cp /c/Users/amine/AppData/Local/Temp/claude/ortpull/node_modules/onnxruntime-web/dist/*.mjs vendor/ 2>/dev/null || true
+DIST=/c/Users/amine/AppData/Local/Temp/claude/ortpull/node_modules/onnxruntime-web/dist
+cp "$DIST/ort.min.js" vendor/
+cp "$DIST"/ort-wasm-simd-threaded*.wasm vendor/
+cp "$DIST"/ort-wasm-simd-threaded*.mjs vendor/
 ls -la vendor/
 ```
 
-Expected: `ort.min.js` plus at least one `.wasm` file (typically `ort-wasm-simd-threaded.wasm` and `ort-wasm-simd-threaded.jsep.wasm`). If `vendor/` has no `.wasm` file, stop — the app cannot run offline without it.
+Copy **only** the runtime-reachable artifacts. `index.html` loads `vendor/ort.min.js` as a classic script, and that bundle dynamically loads the `ort-wasm-simd-threaded.*` pair. A blanket `cp dist/*.mjs` drags in ~18 MB of unreachable build variants (`ort.all.*`, `ort.webgl.*`, `ort.node.*`, ESM duplicates) permanently into the history of a public repo.
+
+Expected: exactly five files — `ort.min.js`, `ort-wasm-simd-threaded.mjs`, `ort-wasm-simd-threaded.wasm`, `ort-wasm-simd-threaded.jsep.mjs`, `ort-wasm-simd-threaded.jsep.wasm`. If `vendor/` has no `.wasm` file, stop — the app cannot run offline without it.
+
+Keep **both** `.jsep.*` files. JSEP is the WebGPU execution path, and `detector.js` requests the `webgpu` provider whenever `navigator.gpu` exists — precisely the iOS 18+ target. Deleting them silently forces the phone onto the slower WASM path.
 
 - [ ] **Step 5: Keep large binaries sane in git**
 
@@ -1359,7 +1364,7 @@ Reload. Then:
 - [ ] **Step 4: Confirm the key is not in the repo**
 
 ```bash
-git grep -i -n "AIza" -- . || echo "CLEAN: no API key in tracked files"
+git grep -inE "AIza[0-9A-Za-z_-]{30,}" -- . || echo "CLEAN: no API key in tracked files"
 ```
 
 Expected: `CLEAN: no API key in tracked files`. If this prints a match, remove the key from that file before committing — it must never enter git history.
@@ -1599,7 +1604,7 @@ from `../Model-v4.2/best.pt`.
 git add README.md
 git commit -m "docs: add README with install and development instructions"
 git status --short
-git grep -i -n "AIza" -- . || echo "CLEAN: no API key in tracked files"
+git grep -inE "AIza[0-9A-Za-z_-]{30,}" -- . || echo "CLEAN: no API key in tracked files"
 du -sh .git
 ```
 
