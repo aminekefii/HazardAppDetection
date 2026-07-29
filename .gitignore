@@ -1,0 +1,7 @@
+# local only — the phone needs best.onnx, not best.pt
+best.pt
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
