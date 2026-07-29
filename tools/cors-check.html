@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gemini CORS check</title>
+<body style="font-family:system-ui;padding:16px;max-width:600px">
+<h3>Gemini CORS check</h3>
+<p>Proves a browser page can call the Gemini REST API directly, with no server.</p>
+<input id="key" type="password" placeholder="paste Gemini API key" style="width:100%;padding:8px">
+<input id="file" type="file" accept="image/*" style="margin:8px 0">
+<button id="go" style="padding:8px 16px">Send to Gemini</button>
+<pre id="out" style="white-space:pre-wrap;background:#f4f4f4;padding:12px;margin-top:12px"></pre>
+<script>
+const out = document.getElementById('out');
+document.getElementById('go').onclick = async () => {
+  const key = document.getElementById('key').value.trim();
+  const file = document.getElementById('file').files[0];
+  if (!key || !file) { out.textContent = 'Need a key and an image.'; return; }
+  out.textContent = 'calling…';
+  const b64 = await new Promise(res => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result.split(',')[1]);
+    fr.readAsDataURL(file);
+  });
+  const t0 = performance.now();
+  try {
+    const r = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+      { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { inline_data: { mime_type: file.type || 'image/jpeg', data: b64 } },
+            { text: 'Reply ONLY with JSON: {"seen":"<one word for the main object>"}' }
+          ]}],
+          generationConfig: { response_mime_type: 'application/json' }
+        }) });
+    const body = await r.text();
+    out.textContent = `HTTP ${r.status} in ${Math.round(performance.now()-t0)} ms\n\n${body}`;
+  } catch (e) {
+    out.textContent = 'FETCH FAILED (likely CORS):\n' + e;
+  }
+};
+</script>
+</body>
