@@ -2,6 +2,8 @@
  * Verification (Gemini) is wired in Task 5. */
 import * as detector from './detector.js';
 import * as ui from './ui.js';
+import * as gemini from './gemini.js';
+import * as speech from './speech.js';
 
 const els = {
   video: document.getElementById('video'),
@@ -11,6 +13,12 @@ const els = {
 
 let running = false;
 const fpsBuf = [];
+
+const COOLDOWN_MS = 8000;        // 7.5 calls/min, inside the 20/min free tier
+let cooldownMs = COOLDOWN_MS;    // temporarily raised after a 429
+let lastCheck = 0;
+let inFlight = false;
+const snap = document.createElement('canvas');
 
 // iOS reports videoWidth as 0 until metadata arrives; sizing canvases before
 // that yields a 0x0 overlay and an empty snapshot. Always wait.
@@ -32,9 +40,50 @@ async function startCamera() {
   await els.video.play();
   await waitForMetadata(els.video);
   ui.initCanvas();
+  snap.width = els.video.videoWidth;
+  snap.height = els.video.videoHeight;
+  speech.unlock();                // must happen inside the Start tap
   els.startBtn.classList.add('hidden');
   running = true;
   requestAnimationFrame(loop);
+}
+
+function grabFrame() {
+  snap.getContext('2d').drawImage(els.video, 0, 0, snap.width, snap.height);
+  return new Promise((res) => snap.toBlob(res, 'image/jpeg', 0.85));
+}
+
+async function verify(dets) {
+  const key = localStorage.getItem('gemini_key');
+  if (!key) { ui.showChip('Tap ⚙ to add your Gemini key'); return; }
+
+  inFlight = true;
+  ui.setStatus('Gemini: checking…');
+  try {
+    const blob = await grabFrame();
+    const finding = dets
+      .map((d) => `${d.name} with ${Math.round(d.conf * 100)}% confidence`)
+      .join('; ');
+    const verdict = await gemini.verify(blob, finding, key);
+    ui.showBanner(verdict);
+    if (verdict.confirmed === true) speech.say(verdict.warning);
+    cooldownMs = COOLDOWN_MS;
+    console.log('[gemini]', verdict);
+  } catch (e) {
+    if (e.kind === 'quota') {
+      cooldownMs = Math.max(e.retryAfterMs, 60000);
+      ui.showBannerMessage(`Rate limited — pausing ${Math.round(cooldownMs / 1000)}s`);
+    } else if (e.kind === 'auth') {
+      ui.showBannerMessage('API key rejected — tap ⚙ to fix it');
+    } else if (e.kind === 'network') {
+      ui.showBannerMessage('Offline — detection only');
+    } else {
+      ui.showBannerMessage(e.message);
+    }
+    console.warn(e);
+  } finally {
+    inFlight = false;
+  }
 }
 
 async function loop() {
@@ -44,10 +93,16 @@ async function loop() {
   const dets = await detector.detect(els.video, els.video.videoWidth, els.video.videoHeight);
   ui.drawBoxes(dets);
 
+  const now = performance.now();
+  if (dets.length && !inFlight && now - lastCheck > cooldownMs && navigator.onLine) {
+    lastCheck = now;
+    verify(dets);                 // fire-and-forget: the loop never awaits it
+  }
+
   fpsBuf.push(1000 / Math.max(performance.now() - t0, 1));
   if (fpsBuf.length > 30) fpsBuf.shift();
   ui.setFps(fpsBuf.reduce((a, b) => a + b, 0) / fpsBuf.length);
-  ui.setStatus(dets.length ? `${dets.length} detection(s)` : 'watching…');
+  if (!inFlight) ui.setStatus(dets.length ? `${dets.length} detection(s)` : 'watching…');
 
   requestAnimationFrame(loop);
 }
@@ -84,6 +139,12 @@ els.startBtn.addEventListener('click', () => {
       ui.showChip('Camera blocked — allow it in Settings ▸ Safari ▸ Camera');
     }
   });
+});
+
+const muteBtn = document.getElementById('muteBtn');
+muteBtn.addEventListener('click', () => {
+  speech.setMuted(!speech.isMuted());
+  muteBtn.textContent = speech.isMuted() ? '🔇' : '🔊';
 });
 
 loadModel();

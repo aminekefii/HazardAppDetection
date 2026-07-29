@@ -40,3 +40,44 @@ export function showChip(text) {
   els.chip.textContent = text;
   els.chip.classList.remove('hidden');
 }
+
+/* ---- banner ---- */
+const DANGER_ACCENT = { high: '#ff3b30', medium: '#ff8c00', low: '#34c759' };
+const NOT_CONFIRMED_ACCENT = '#8e8e93';
+const STALE_AFTER_MS = 30000;
+
+const bannerEls = {
+  banner: document.getElementById('banner'),
+  head: document.getElementById('banner-head'),
+  warn: document.getElementById('banner-warn'),
+};
+let staleTimer = null;
+
+export function showBanner(verdict) {
+  const confirmed = verdict.confirmed === true;
+  const danger = String(verdict.danger_level || '').toLowerCase();
+  const accent = confirmed ? (DANGER_ACCENT[danger] || '#ff8c00') : NOT_CONFIRMED_ACCENT;
+  const cls = String(verdict.detected_class || '?').toUpperCase();
+
+  bannerEls.banner.style.setProperty('--accent', accent);
+  bannerEls.head.textContent = confirmed
+    ? `${cls}  ·  ${(danger || '?').toUpperCase()} DANGER`
+    : `${cls}  ·  NOT CONFIRMED`;
+  bannerEls.warn.textContent = verdict.warning || '';
+  bannerEls.banner.classList.remove('hidden', 'stale');
+
+  // a stale verdict must never read as a live one
+  clearTimeout(staleTimer);
+  staleTimer = setTimeout(markBannerStale, STALE_AFTER_MS);
+}
+
+export function markBannerStale() { bannerEls.banner.classList.add('stale'); }
+
+export function showBannerMessage(text, accent = NOT_CONFIRMED_ACCENT) {
+  bannerEls.banner.style.setProperty('--accent', accent);
+  bannerEls.head.textContent = 'GEMINI';
+  bannerEls.warn.textContent = text;
+  bannerEls.banner.classList.remove('hidden', 'stale');
+  clearTimeout(staleTimer);
+  staleTimer = setTimeout(markBannerStale, STALE_AFTER_MS);
+}
