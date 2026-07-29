@@ -4,6 +4,7 @@ import * as detector from './detector.js';
 import * as ui from './ui.js';
 import * as gemini from './gemini.js';
 import * as speech from './speech.js';
+import * as settings from './settings.js';
 
 const els = {
   video: document.getElementById('video'),
@@ -55,7 +56,7 @@ function grabFrame() {
 }
 
 async function verify(dets) {
-  const key = localStorage.getItem('gemini_key');
+  const key = settings.getKey();
   if (!key) { ui.showChip('Tap ⚙ to add your Gemini key'); return; }
 
   inFlight = true;
@@ -76,6 +77,7 @@ async function verify(dets) {
       ui.showBannerMessage(`Rate limited — pausing ${Math.round(cooldownMs / 1000)}s`);
     } else if (e.kind === 'auth') {
       ui.showBannerMessage('API key rejected — tap ⚙ to fix it');
+      settings.open();
     } else if (e.kind === 'network') {
       ui.showBannerMessage('Offline — detection only');
     } else {
@@ -158,5 +160,11 @@ muteBtn.addEventListener('click', () => {
   speech.setMuted(!speech.isMuted());
   muteBtn.textContent = speech.isMuted() ? '🔇' : '🔊';
 });
+
+function reflectKeyState(key) {
+  ui.showChip(key ? null : 'Tap ⚙ to add your Gemini key');
+}
+settings.onChange(reflectKeyState);
+reflectKeyState(settings.getKey());
 
 loadModel();
