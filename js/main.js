@@ -18,6 +18,7 @@ const COOLDOWN_MS = 8000;        // 7.5 calls/min, inside the 20/min free tier
 let cooldownMs = COOLDOWN_MS;    // temporarily raised after a 429
 let lastCheck = 0;
 let inFlight = false;
+let offlineChip = false;
 const snap = document.createElement('canvas');
 
 // iOS reports videoWidth as 0 until metadata arrives; sizing canvases before
@@ -93,10 +94,21 @@ async function loop() {
   const dets = await detector.detect(els.video, els.video.videoWidth, els.video.videoHeight);
   ui.drawBoxes(dets);
 
+  // Offline never reaches gemini.js: the guard below means verify() is not
+  // called at all, so the 'network' branch cannot report it. Say so here
+  // instead, or a hazard silently goes unverified with no explanation.
   const now = performance.now();
-  if (dets.length && !inFlight && now - lastCheck > cooldownMs && navigator.onLine) {
-    lastCheck = now;
-    verify(dets);                 // fire-and-forget: the loop never awaits it
+  if (!navigator.onLine) {
+    if (dets.length && !offlineChip) {
+      ui.showChip('Offline — detection only');
+      offlineChip = true;
+    }
+  } else {
+    if (offlineChip) { ui.showChip(null); offlineChip = false; }
+    if (dets.length && !inFlight && now - lastCheck > cooldownMs) {
+      lastCheck = now;
+      verify(dets);               // fire-and-forget: the loop never awaits it
+    }
   }
 
   fpsBuf.push(1000 / Math.max(performance.now() - t0, 1));
