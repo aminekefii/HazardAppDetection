@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>detector.js parity check</title>
+<body style="font-family:system-ui;padding:16px;background:#111;color:#eee">
+<h3>detector.js vs Python parity</h3>
+<pre id="out" style="white-space:pre-wrap;font-size:13px"></pre>
+<script src="../../vendor/ort.min.js"></script>
+<script type="module">
+import * as detector from '../../js/detector.js';
+
+const TOL_BOX = 5.0;    // px, fp32 differences between runtimes
+const TOL_CONF = 0.05;
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += s + '\n'; };
+
+function loadImage(src) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = src;
+  });
+}
+
+(async () => {
+  const expected = await fetch('expected.json').then(r => r.json());
+  await detector.init('../../model/best.onnx', '../../model/labels.json');
+  let failures = 0;
+
+  for (const [file, ref] of Object.entries(expected)) {
+    const im = await loadImage(file);
+    const got = await detector.detect(im, im.naturalWidth, im.naturalHeight);
+    log(`\n=== ${file} (${im.naturalWidth}x${im.naturalHeight}) ===`);
+    log(`python: ${ref.dets.length} dets | js: ${got.length} dets`);
+
+    if (got.length !== ref.dets.length) { failures++; log('  FAIL: detection count differs'); }
+
+    const n = Math.min(got.length, ref.dets.length);
+    for (let i = 0; i < n; i++) {
+      const e = ref.dets[i], g = got[i];
+      const dBox = e.box.map((v, k) => Math.abs(v - g.box[k]));
+      const dConf = Math.abs(e.conf - g.conf);
+      const ok = g.cls === e.cls && dConf <= TOL_CONF && dBox.every(d => d <= TOL_BOX);
+      if (!ok) failures++;
+      log(`  ${ok ? 'PASS' : 'FAIL'} #${i} py=${e.name} ${e.conf} [${e.box}]`);
+      log(`         js=${g.name} ${g.conf.toFixed(3)} [${g.box.map(v => v.toFixed(1))}]`);
+      log(`         dconf=${dConf.toFixed(4)} dbox=[${dBox.map(v => v.toFixed(1))}]`);
+    }
+  }
+  log(`\n${failures === 0 ? '*** PARITY PASS ***' : `*** PARITY FAIL (${failures}) ***`}`);
+})().catch(e => { log('ERROR: ' + e.message); console.error(e); });
+</script>
+</body>
