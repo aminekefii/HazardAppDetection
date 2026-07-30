@@ -7,7 +7,10 @@ let unlocked = false;
 
 export function unlock() {
   if (unlocked || !('speechSynthesis' in window)) return;
-  const u = new SpeechSynthesisUtterance('');
+  // The text must not be empty: WebKit discards an empty utterance without
+  // ever starting the audio session, which leaves every later say() silently
+  // ignored. A single space is inaudible but real enough to open the session.
+  const u = new SpeechSynthesisUtterance(' ');
   u.volume = 0;
   window.speechSynthesis.speak(u);
   unlocked = true;

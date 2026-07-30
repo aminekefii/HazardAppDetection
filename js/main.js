@@ -44,7 +44,6 @@ async function startCamera() {
   ui.initCanvas();
   snap.width = els.video.videoWidth;
   snap.height = els.video.videoHeight;
-  speech.unlock();                // must happen inside the Start tap
   els.startBtn.classList.add('hidden');
   running = true;
   requestAnimationFrame(loop);
@@ -146,6 +145,10 @@ function loadModel() {
 
 els.startBtn.addEventListener('click', () => {
   if (!modelReady) { loadModel(); return; }
+  // iOS opens the speech audio session only for a speak() made during the
+  // synchronous run of a tap handler. startCamera() awaits getUserMedia first,
+  // so unlocking in there is already too late — the warnings then never play.
+  speech.unlock();
   startCamera().catch((e) => {
     els.startBtn.disabled = false;
     ui.setStatus('camera error: ' + e.message);
