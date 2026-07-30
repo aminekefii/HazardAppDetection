@@ -75,7 +75,7 @@ export async function verify(jpegBlob, finding, apiKey) {
       throw new GeminiError('auth', 'API key rejected');
     }
     if (res.status === 429) {
-      // free tier is 20 req/min; the body carries "Please retry in 57.8s"
+      // free tier is 20 req/day; the body carries "Please retry in 57.8s"
       const m = body.match(/retry in ([\d.]+)s/i);
       throw new GeminiError('quota', 'rate limited',
         m ? Math.ceil(parseFloat(m[1]) * 1000) : 60000);

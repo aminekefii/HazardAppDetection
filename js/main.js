@@ -15,7 +15,11 @@ const els = {
 let running = false;
 const fpsBuf = [];
 
-const COOLDOWN_MS = 8000;        // 7.5 calls/min, inside the 20/min free tier
+// The free tier for gemini-2.5-flash is 20 requests PER DAY, not per minute
+// (quota GenerateRequestsPerDayPerProjectPerModel-FreeTier), so this 8s gap
+// spends the whole daily allowance in ~2.5 minutes of continuous detection.
+// Raise it, or use a paid key, for anything longer than a demo. See README.
+const COOLDOWN_MS = 8000;
 let cooldownMs = COOLDOWN_MS;    // temporarily raised after a 429
 let lastCheck = 0;
 let inFlight = false;
