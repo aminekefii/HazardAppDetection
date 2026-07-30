@@ -1,8 +1,23 @@
 /* sw.js — cache-first so the app boots and detects with no network.
- * Bump SHELL_VERSION whenever any shell file changes.
- * MODEL_VERSION only changes when model/best.onnx is re-exported. */
-const SHELL_VERSION = 'shell-v3';
+ *
+ * Three caches, versioned independently so a change to one does not re-download
+ * the others. Bump only the one you actually changed:
+ *   SHELL_VERSION    any html/css/js/icon change — a few KB, bump freely
+ *   RUNTIME_VERSION  only when vendor/ is re-vendored — ~33 MB
+ *   MODEL_VERSION    only when model/best.onnx is re-exported — ~38 MB
+ * Keeping the ORT runtime out of the shell is what makes shipping a one-line
+ * JS fix cost kilobytes instead of tens of megabytes. */
+const SHELL_VERSION = 'shell-v4';
+const RUNTIME_VERSION = 'ort-v1';
 const MODEL_VERSION = 'model-v1';
+
+const SHELL = [
+  './', './index.html', './manifest.json',
+  './css/style.css',
+  './js/main.js', './js/detector.js', './js/gemini.js',
+  './js/speech.js', './js/settings.js', './js/ui.js',
+  './icons/icon-192.png', './icons/icon-512.png',
+];
 
 // The ORT runtime is fetched lazily by ort.min.js, so on a first visit those
 // requests race the worker's own registration and escape the fetch handler
@@ -13,7 +28,7 @@ const MODEL_VERSION = 'model-v1';
 // makes offline boot a guarantee rather than a race against eviction.
 // Both variants ship: detector.js prefers the WebGPU (jsep) build and falls
 // back to the plain wasm one, and which path a phone takes is not knowable here.
-const ORT_RUNTIME = [
+const RUNTIME = [
   './vendor/ort.min.js',
   './vendor/ort-wasm-simd-threaded.mjs',
   './vendor/ort-wasm-simd-threaded.wasm',
@@ -21,30 +36,21 @@ const ORT_RUNTIME = [
   './vendor/ort-wasm-simd-threaded.jsep.wasm',
 ];
 
-const SHELL = [
-  './', './index.html', './manifest.json',
-  './css/style.css',
-  './js/main.js', './js/detector.js', './js/gemini.js',
-  './js/speech.js', './js/settings.js', './js/ui.js',
-  ...ORT_RUNTIME,
-  './icons/icon-192.png', './icons/icon-512.png',
-];
-
 const MODEL = ['./model/best.onnx', './model/labels.json'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
-    const shell = await caches.open(SHELL_VERSION);
-    await shell.addAll(SHELL);
-    const model = await caches.open(MODEL_VERSION);
-    await model.addAll(MODEL);
+    // addAll is atomic per cache, so a failure only costs the one it belongs to
+    await (await caches.open(SHELL_VERSION)).addAll(SHELL);
+    await (await caches.open(RUNTIME_VERSION)).addAll(RUNTIME);
+    await (await caches.open(MODEL_VERSION)).addAll(MODEL);
     self.skipWaiting();
   })());
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    const keep = new Set([SHELL_VERSION, MODEL_VERSION]);
+    const keep = new Set([SHELL_VERSION, RUNTIME_VERSION, MODEL_VERSION]);
     for (const k of await caches.keys()) if (!keep.has(k)) await caches.delete(k);
     await self.clients.claim();
   })());
@@ -60,9 +66,10 @@ self.addEventListener('fetch', (e) => {
     if (hit) return hit;
     try {
       const res = await fetch(e.request);
-      // ORT fetches its .wasm lazily — cache whatever else we end up needing
+      // belt and braces: anything under vendor/ that precaching somehow missed
+      // still lands in the runtime cache rather than the shell
       if (res.ok && url.pathname.includes('/vendor/')) {
-        (await caches.open(SHELL_VERSION)).put(e.request, res.clone());
+        (await caches.open(RUNTIME_VERSION)).put(e.request, res.clone());
       }
       return res;
     } catch (err) {
