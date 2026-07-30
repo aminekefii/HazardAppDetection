@@ -1,15 +1,32 @@
 /* sw.js — cache-first so the app boots and detects with no network.
  * Bump SHELL_VERSION whenever any shell file changes.
  * MODEL_VERSION only changes when model/best.onnx is re-exported. */
-const SHELL_VERSION = 'shell-v1';
+const SHELL_VERSION = 'shell-v2';
 const MODEL_VERSION = 'model-v1';
+
+// The ORT runtime is fetched lazily by ort.min.js, so on a first visit those
+// requests race the worker's own registration and escape the fetch handler
+// below. Left out of here they never reach the Cache API at all, and the app
+// boots offline only for as long as the browser's HTTP cache happens to still
+// hold them — once that is evicted (iOS does it aggressively to home-screen
+// apps) the model fails with "no available backend found". Precaching is what
+// makes offline boot a guarantee rather than a race against eviction.
+// Both variants ship: detector.js prefers the WebGPU (jsep) build and falls
+// back to the plain wasm one, and which path a phone takes is not knowable here.
+const ORT_RUNTIME = [
+  './vendor/ort.min.js',
+  './vendor/ort-wasm-simd-threaded.mjs',
+  './vendor/ort-wasm-simd-threaded.wasm',
+  './vendor/ort-wasm-simd-threaded.jsep.mjs',
+  './vendor/ort-wasm-simd-threaded.jsep.wasm',
+];
 
 const SHELL = [
   './', './index.html', './manifest.json',
   './css/style.css',
   './js/main.js', './js/detector.js', './js/gemini.js',
   './js/speech.js', './js/settings.js', './js/ui.js',
-  './vendor/ort.min.js',
+  ...ORT_RUNTIME,
   './icons/icon-192.png', './icons/icon-512.png',
 ];
 
