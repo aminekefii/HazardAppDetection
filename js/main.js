@@ -168,6 +168,10 @@ muteBtn.addEventListener('click', () => {
   muteBtn.textContent = speech.isMuted() ? '🔇' : '🔊';
 });
 
+// A warning that is never heard looks identical to one that was never sent,
+// so surface the reason on the phone rather than only in a console nobody has.
+speech.onSpeechProblem((msg) => ui.showChip(msg));
+
 function reflectKeyState(key) {
   ui.showChip(key ? null : 'Tap ⚙ to add your Gemini key');
 }

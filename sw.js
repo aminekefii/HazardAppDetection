@@ -1,7 +1,7 @@
 /* sw.js — cache-first so the app boots and detects with no network.
  * Bump SHELL_VERSION whenever any shell file changes.
  * MODEL_VERSION only changes when model/best.onnx is re-exported. */
-const SHELL_VERSION = 'shell-v2';
+const SHELL_VERSION = 'shell-v3';
 const MODEL_VERSION = 'model-v1';
 
 // The ORT runtime is fetched lazily by ort.min.js, so on a first visit those
