@@ -39,4 +39,9 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff;
 #sheet button { flex: 1; padding: 12px; font-size: 15px; border: 0; border-radius: 10px;
   background: #0a84ff; color: #fff; }
 #sheet button.ghost { background: #3a3a3c; }
+#sheet h2 + p { margin-top: 0; }
+#sheet { max-height: 88dvh; overflow-y: auto; }
+#diag { margin: 12px 0 0; padding: 10px; border-radius: 10px; background: #000;
+  border: 1px solid #3a3a3c; color: #9ad7a0; font-size: 11px; line-height: 1.5;
+  font-family: ui-monospace, Menlo, monospace; white-space: pre-wrap; }
 .hidden { display: none !important; }

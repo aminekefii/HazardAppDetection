@@ -6,6 +6,12 @@ import * as gemini from './gemini.js';
 import * as speech from './speech.js';
 import * as settings from './settings.js';
 
+// Shown in the settings sheet. Its only job is to answer "is this phone running
+// the build I just deployed?" without guessing — the question that went
+// unanswered while a stale service-worker cache pinned installed apps to old
+// code. Bump it when you deploy something you need to confirm arrived.
+const BUILD = '2026-07-31a';
+
 const els = {
   video: document.getElementById('video'),
   overlay: document.getElementById('overlay'),
@@ -27,12 +33,36 @@ let offlineChip = false;
 const snap = document.createElement('canvas');
 
 // iOS reports videoWidth as 0 until metadata arrives; sizing canvases before
-// that yields a 0x0 overlay and an empty snapshot. Always wait.
-function waitForMetadata(video) {
-  if (video.readyState >= 1 && video.videoWidth > 0) return Promise.resolve();
-  return new Promise((resolve) => {
-    video.addEventListener('loadedmetadata', () => resolve(), { once: true });
+// that yields a 0x0 overlay and an empty snapshot. Always wait — but never
+// forever. Waiting on loadedmetadata alone hangs if the event already fired
+// while videoWidth was still 0, and a hang here leaves the Start button
+// disabled with the status stuck on "starting camera…" and no way back.
+function waitForMetadata(video, timeoutMs = 8000) {
+  if (video.videoWidth > 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const finish = (err) => {
+      clearInterval(poll);
+      clearTimeout(timer);
+      video.removeEventListener('loadedmetadata', onMeta);
+      err ? reject(err) : resolve();
+    };
+    const onMeta = () => { if (video.videoWidth > 0) finish(); };
+    const poll = setInterval(onMeta, 100);
+    const timer = setTimeout(
+      () => finish(new Error('the camera never reported a frame size')), timeoutMs);
+    video.addEventListener('loadedmetadata', onMeta);
   });
+}
+
+// The overlay and the snapshot are both sized in source pixels, so they have to
+// follow the track when it changes shape — rotating the phone in a Safari tab
+// otherwise leaves every box drawn against stale dimensions and sends Gemini a
+// mis-cropped frame.
+function sizeToVideo() {
+  if (!els.video.videoWidth) return;
+  ui.initCanvas();
+  snap.width = els.video.videoWidth;
+  snap.height = els.video.videoHeight;
 }
 
 async function startCamera() {
@@ -45,9 +75,8 @@ async function startCamera() {
   els.video.srcObject = stream;
   await els.video.play();
   await waitForMetadata(els.video);
-  ui.initCanvas();
-  snap.width = els.video.videoWidth;
-  snap.height = els.video.videoHeight;
+  sizeToVideo();
+  els.video.addEventListener('resize', sizeToVideo);
   els.startBtn.classList.add('hidden');
   running = true;
   requestAnimationFrame(loop);
@@ -60,7 +89,7 @@ function grabFrame() {
 
 async function verify(dets) {
   const key = settings.getKey();
-  if (!key) { ui.showChip('Tap ⚙ to add your Gemini key'); return; }
+  if (!key) return;                   // reflectKeyState already owns that chip
 
   inFlight = true;
   ui.setStatus('Gemini: checking…');
@@ -105,11 +134,11 @@ async function loop() {
   const now = performance.now();
   if (!navigator.onLine) {
     if (dets.length && !offlineChip) {
-      ui.showChip('Offline — detection only');
+      ui.setChip('offline', 'Offline — detection only');
       offlineChip = true;
     }
   } else {
-    if (offlineChip) { ui.showChip(null); offlineChip = false; }
+    if (offlineChip) { ui.setChip('offline', null); offlineChip = false; }
     if (dets.length && !inFlight && now - lastCheck > cooldownMs) {
       lastCheck = now;
       verify(dets);               // fire-and-forget: the loop never awaits it
@@ -155,9 +184,10 @@ els.startBtn.addEventListener('click', () => {
   speech.unlock();
   startCamera().catch((e) => {
     els.startBtn.disabled = false;
+    els.startBtn.classList.remove('hidden');
     ui.setStatus('camera error: ' + e.message);
     if (e.name === 'NotAllowedError') {
-      ui.showChip('Camera blocked — allow it in Settings ▸ Safari ▸ Camera');
+      ui.setChip('camera', 'Camera blocked — allow it in Settings ▸ Safari ▸ Camera');
     }
   });
 });
@@ -168,12 +198,47 @@ muteBtn.addEventListener('click', () => {
   muteBtn.textContent = speech.isMuted() ? '🔇' : '🔊';
 });
 
+/* ---- on-device diagnostics ----
+ * A phone has no console. When a warning is not heard there is nothing to read
+ * and nothing to compare, which is how "speaks in Safari, silent from the home
+ * screen" stayed unexplained: the two are separate installs with separate
+ * storage, and no way to see which code or which audio state either was in.
+ * This reports both, and Test voice makes the check independent of whether a
+ * hazard has happened to be confirmed yet. */
+function refreshDiagnostics() {
+  const d = speech.diagnostics();
+  ui.setDiagnostics([
+    `build      ${BUILD}`,
+    `launched   ${d.mode}`,
+    `speech     ${d.supported ? 'supported' : 'MISSING'}, ${d.unlocked ? 'unlocked' : 'NOT unlocked'}${d.muted ? ', muted' : ''}`,
+    `voices     ${d.voices}`,
+    `synth      speaking=${d.speaking} pending=${d.pending} paused=${d.paused}`,
+    `audio      ${d.audioSession}`,
+    `camera     ${running ? `running ${els.video.videoWidth}x${els.video.videoHeight}` : 'not started'}`,
+    `last event ${d.lastEvent}`,
+  ].join('\n'));
+}
+
+const testVoiceBtn = document.getElementById('testVoice');
+testVoiceBtn.addEventListener('click', () => {
+  // Inside the tap: iOS grants the audio session here and nowhere else.
+  speech.testVoice();
+  refreshDiagnostics();
+  setTimeout(refreshDiagnostics, 1500);
+});
+
+settings.onOpen(refreshDiagnostics);
+
 // A warning that is never heard looks identical to one that was never sent,
 // so surface the reason on the phone rather than only in a console nobody has.
-speech.onSpeechProblem((msg) => ui.showChip(msg));
+// It expires: it describes one warning, not a standing condition.
+speech.onSpeechProblem((msg) => {
+  ui.setChip('speech', msg, 12000);
+  refreshDiagnostics();
+});
 
 function reflectKeyState(key) {
-  ui.showChip(key ? null : 'Tap ⚙ to add your Gemini key');
+  ui.setChip('key', key ? null : 'Tap ⚙ to add your Gemini key');
 }
 settings.onChange(reflectKeyState);
 reflectKeyState(settings.getKey());

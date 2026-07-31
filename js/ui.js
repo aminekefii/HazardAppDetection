@@ -6,6 +6,7 @@ const els = {
   status: document.getElementById('status'),
   fps: document.getElementById('fps'),
   chip: document.getElementById('chip'),
+  diag: document.getElementById('diag'),
 };
 
 const BOX_COLOR = '#44e0ff';
@@ -35,10 +36,38 @@ export function drawBoxes(dets) {
 export function setStatus(text) { els.status.textContent = text; }
 export function setFps(n) { els.fps.textContent = n ? `${n.toFixed(1)} FPS` : ''; }
 
-export function showChip(text) {
-  if (!text) { els.chip.classList.add('hidden'); return; }
-  els.chip.textContent = text;
-  els.chip.classList.remove('hidden');
+/* ---- chip ----
+ * There is one chip and several things that want to speak through it. Writing
+ * to it directly meant whoever wrote last won, and a message with no owner
+ * could never be taken back: a one-off speech failure sat there permanently,
+ * having silently replaced the "add your key" prompt that was still true.
+ * Each source now owns its own slot and the most urgent visible one shows. */
+const CHIP_PRIORITY = ['camera', 'speech', 'offline', 'key'];
+const chipText = new Map();
+const chipTimers = new Map();
+
+export function setChip(source, text, ttlMs = 0) {
+  clearTimeout(chipTimers.get(source));
+  chipTimers.delete(source);
+  if (text) {
+    chipText.set(source, text);
+    // transient problems clear themselves; standing conditions do not
+    if (ttlMs) chipTimers.set(source, setTimeout(() => setChip(source, null), ttlMs));
+  } else {
+    chipText.delete(source);
+  }
+  for (const s of CHIP_PRIORITY) {
+    if (chipText.has(s)) {
+      els.chip.textContent = chipText.get(s);
+      els.chip.classList.remove('hidden');
+      return;
+    }
+  }
+  els.chip.classList.add('hidden');
+}
+
+export function setDiagnostics(text) {
+  if (els.diag) els.diag.textContent = text;
 }
 
 /* ---- banner ---- */
