@@ -71,7 +71,12 @@ export async function verify(jpegBlob, finding, apiKey) {
 
   if (!res.ok) {
     const body = await res.text();
-    if (res.status === 400 || res.status === 401 || res.status === 403) {
+    // 400 is ambiguous: a bad key returns it, but so does any malformed request
+    // (an oversized inline JPEG, say). Only the body distinguishes them, and
+    // getting it wrong sends the user off to re-paste a key that was fine —
+    // main.js forces the settings sheet open on 'auth'.
+    const badKey = /API_KEY_INVALID|api key not valid/i.test(body);
+    if (res.status === 401 || res.status === 403 || (res.status === 400 && badKey)) {
       throw new GeminiError('auth', 'API key rejected');
     }
     if (res.status === 429) {
